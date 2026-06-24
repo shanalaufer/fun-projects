@@ -191,16 +191,6 @@
     z-index: 5;
   }
 
-  /* Screen shake on merge — amplitude set via --amp (scaled to merge tier) */
-  @keyframes shake {
-    0%, 100% { transform: translate(0, 0); }
-    20% { transform: translate(calc(var(--amp, 4) * -1px), calc(var(--amp, 4) * 0.6px)); }
-    40% { transform: translate(calc(var(--amp, 4) * 1px),  calc(var(--amp, 4) * -0.6px)); }
-    60% { transform: translate(calc(var(--amp, 4) * -0.7px), calc(var(--amp, 4) * 0.4px)); }
-    80% { transform: translate(calc(var(--amp, 4) * 0.7px), calc(var(--amp, 4) * -0.4px)); }
-  }
-  .board.shake { animation: shake 0.2s ease-in-out; }
-
   /* Overlays */
   .overlay {
     position: absolute;
@@ -712,7 +702,6 @@ function move(dir) {
       }
       bumpCombo();
       playMerge(maxMerge);
-      screenShake(maxMerge);
     } else {
       resetCombo();
     }
@@ -905,17 +894,6 @@ function spawnPoof(r, c, value) {
   wrap.appendChild(inner);
   fxLayer.appendChild(wrap);
   setTimeout(() => wrap.remove(), 650);
-}
-
-/* Shake the board, amplitude scaled to the biggest merge in the move. */
-function screenShake(maxMergeValue) {
-  const tier = Math.max(1, Math.log2(maxMergeValue) - 1); // 4 -> 1, 2048 -> 10
-  const amp = Math.min(14, 2 + tier * 1.2);
-  boardEl.style.setProperty("--amp", amp.toFixed(1));
-  boardEl.classList.remove("shake");
-  void boardEl.offsetWidth;                 // reflow so the animation restarts
-  boardEl.classList.add("shake");
-  boardEl.addEventListener("animationend", () => boardEl.classList.remove("shake"), { once: true });
 }
 
 /* Combo streak: merge again within the window to build a multiplier. */
