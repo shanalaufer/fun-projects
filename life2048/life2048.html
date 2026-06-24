@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Life 2048</title>
+<style>
+  :root {
+    --bg: #faf8ef;
+    --board-bg: #bbada0;
+    --cell-bg: #cdc1b4;
+    --text-dark: #776e65;
+    --text-light: #f9f6f2;
+    --gap: 12px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: var(--text-dark);
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    transition: background 0.6s ease;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: 40px;
+    margin: 0;
+    line-height: 1;
+    font-weight: 800;
+  }
+  .tagline {
+    font-size: 12px;
+    color: #9a8f82;
+    margin-top: 4px;
+    max-width: 200px;
+  }
+
+  .scores {
+    display: flex;
+    gap: 8px;
+  }
+  .score-box {
+    background: var(--board-bg);
+    color: var(--text-light);
+    border-radius: 6px;
+    padding: 8px 14px;
+    text-align: center;
+    min-width: 72px;
+  }
+  .score-box .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #eee4da;
+    font-weight: 700;
+  }
+  .score-box .value {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 10px;
+  }
+  .controls p {
+    margin: 0;
+    font-size: 13px;
+    color: #9a8f82;
+  }
+  button.btn {
+    background: #8f7a66;
+    color: var(--text-light);
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button.btn:hover { background: #9d8775; }
+  button.btn:active { transform: translateY(1px); }
+
+  /* Board */
+  .board {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--board-bg);
+    border-radius: 10px;
+    padding: var(--gap);
+    touch-action: none;
+    transition: background 0.6s ease;
+  }
+  .grid-bg {
+    position: absolute;
+    inset: var(--gap);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: var(--gap);
+  }
+  .grid-cell {
+    background: var(--cell-bg);
+    border-radius: 6px;
+  }
+
+  .tile-layer {
+    position: absolute;
+    inset: var(--gap);
+  }
+
+  .tile {
+    position: absolute;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-weight: 800;
+    color: var(--text-light);
+    padding: 4px;
+    overflow: hidden;
+    transition: translate 0.12s ease-in-out;
+    will-change: translate;
+  }
+  .tile .emoji {
+    font-size: 1.9em;
+    line-height: 1;
+  }
+  .tile .lbl {
+    font-size: 0.62em;
+    line-height: 1.05;
+    margin-top: 3px;
+    word-break: break-word;
+    hyphens: auto;
+  }
+
+  /* spawn + merge animations */
+  @keyframes spawn {
+    0%   { scale: 0; }
+    100% { scale: 1; }
+  }
+  @keyframes pop {
+    0%   { scale: 1; }
+    45%  { scale: 1.32; }
+    70%  { scale: 0.94; }
+    100% { scale: 1; }
+  }
+  /* glow ring expands out of the merged tile */
+  @keyframes glowring {
+    0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.85), 0 0 12px 2px rgba(255,255,255,0.7); }
+    100% { box-shadow: 0 0 0 16px rgba(255,255,255,0), 0 0 0 0 rgba(255,255,255,0); }
+  }
+  .tile.spawn { animation: spawn 0.14s ease-out; }
+  .tile.merged {
+    animation: pop 0.22s ease-in-out, glowring 0.5s ease-out;
+    z-index: 5;
+  }
+
+  /* Screen shake on merge — amplitude set via --amp (scaled to merge tier) */
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    20% { transform: translate(calc(var(--amp, 4) * -1px), calc(var(--amp, 4) * 0.6px)); }
+    40% { transform: translate(calc(var(--amp, 4) * 1px),  calc(var(--amp, 4) * -0.6px)); }
+    60% { transform: translate(calc(var(--amp, 4) * -0.7px), calc(var(--amp, 4) * 0.4px)); }
+    80% { transform: translate(calc(var(--amp, 4) * 0.7px), calc(var(--amp, 4) * -0.4px)); }
+  }
+  .board.shake { animation: shake 0.2s ease-in-out; }
+
+  /* Overlays */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border-radius: 10px;
+    padding: 24px;
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+
+  .overlay.gameover { background: rgba(238, 228, 218, 0.78); }
+  .overlay.win { background: rgba(237, 194, 46, 0.92); color: #fff; }
+  .overlay.layoff { background: rgba(20, 20, 25, 0.94); color: #fff; }
+
+  .overlay h2 {
+    font-size: 34px;
+    margin: 0 0 10px;
+    line-height: 1.1;
+  }
+  .overlay .sub {
+    font-size: 15px;
+    max-width: 320px;
+    margin: 0 0 20px;
+    line-height: 1.4;
+    opacity: 0.95;
+  }
+  .overlay.win h2 { font-size: 40px; text-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+  .overlay.layoff h2 {
+    font-size: 44px;
+    color: #ff5b5b;
+    letter-spacing: 0.02em;
+  }
+  .overlay .btn.light {
+    background: #f9f6f2;
+    color: #8f7a66;
+  }
+
+  /* Confetti */
+  .confetti {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 40;
+  }
+  .confetti i {
+    position: absolute;
+    top: -12px;
+    width: 9px;
+    height: 14px;
+    opacity: 0.9;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    to { transform: translateY(120%) rotate(720deg); opacity: 0.8; }
+  }
+
+  /* layoff dramatic flash on board */
+  @keyframes shudder {
+    0%,100% { transform: translate(0,0); }
+    20% { transform: translate(-6px, 3px); }
+    40% { transform: translate(6px, -3px); }
+    60% { transform: translate(-4px, -2px); }
+    80% { transform: translate(4px, 2px); }
+  }
+  .board.shudder { animation: shudder 0.4s ease-in-out 2; }
+
+  /* ---- Combo "+N" floating popups + spawn poofs ---- */
+  .fx-layer {
+    position: absolute;
+    inset: var(--gap);
+    pointer-events: none;
+    z-index: 45;
+  }
+  .fx-pos {
+    position: absolute;
+    height: calc((100% - var(--gap) * 3) / 4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .popup {
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    animation: floatUp 0.9s ease-out forwards;
+  }
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translateY(6px) scale(0.7); }
+    25%  { opacity: 1; transform: translateY(-4px) scale(1.1); }
+    100% { opacity: 0; transform: translateY(-44px) scale(1); }
+  }
+  .poof {
+    font-size: 26px;
+    animation: poof 0.6s ease-out forwards;
+  }
+  @keyframes poof {
+    0%   { opacity: 0; transform: scale(0.3) rotate(-12deg); }
+    35%  { opacity: 1; transform: scale(1.25) rotate(6deg); }
+    100% { opacity: 0; transform: scale(1.5) translateY(-14px) rotate(0); }
+  }
+
+  /* ---- Combo streak badge ---- */
+  .combo-badge {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%) scale(0.7);
+    background: linear-gradient(135deg, #f67c5f, #f65e3b);
+    color: #fff;
+    padding: 5px 14px;
+    border-radius: 16px;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    box-shadow: 0 4px 14px rgba(246, 94, 59, 0.5);
+    z-index: 47;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(.34,1.56,.64,1);
+  }
+  .combo-badge.show {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+
+  /* ---- Red vignette for the dramatic layoff ---- */
+  .vignette {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    pointer-events: none;
+    z-index: 48;
+    opacity: 0;
+    background: radial-gradient(ellipse at center,
+                rgba(120,0,0,0) 35%,
+                rgba(120,0,0,0.55) 80%,
+                rgba(80,0,0,0.85) 100%);
+    transition: opacity 0.5s ease;
+  }
+  .vignette.show { opacity: 1; }
+
+  /* a tile falling off the board during the layoff crumble */
+  .tile.crumble { z-index: 6; }
+
+  footer {
+    margin-top: 16px;
+    font-size: 12px;
+    color: #b3a99c;
+    text-align: center;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Life 2048</h1>
+      <div class="tagline">Grow up, grind, and finally land the job.</div>
+    </div>
+    <div class="scores">
+      <div class="score-box">
+        <div class="label">Score</div>
+        <div class="value" id="score">0</div>
+      </div>
+      <div class="score-box">
+        <div class="label">Best</div>
+        <div class="value" id="best">0</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <p>Swipe or use arrow keys</p>
+    <div style="display:flex; gap:8px;">
+      <button class="btn" id="soundToggle" title="Toggle sound">🔊</button>
+      <button class="btn" id="restart">New Game</button>
+    </div>
+  </div>
+
+  <div class="board" id="board">
+    <div class="grid-bg" id="gridBg"></div>
+    <div class="tile-layer" id="tileLayer"></div>
+    <div class="fx-layer" id="fxLayer"></div>
+    <div class="confetti" id="confetti"></div>
+    <div class="vignette" id="vignette"></div>
+    <div class="combo-badge" id="comboBadge"></div>
+
+    <div class="overlay win" id="winOverlay">
+      <h2>CONGRATS!! 🎉<br>You finally got a job!</h2>
+      <p class="sub">After 18 years, 3 side projects, and a brief stint as a millionaire... you're finally employed.</p>
+      <button class="btn light" id="keepPlaying">Keep playing</button>
+    </div>
+
+    <div class="overlay gameover" id="overOverlay">
+      <h2>Game Over</h2>
+      <p class="sub">No moves left. Life comes at you fast.</p>
+      <button class="btn" id="tryAgain">Try again</button>
+    </div>
+
+    <div class="overlay layoff" id="layoffOverlay">
+      <h2>GOT LAID OFF 💀</h2>
+      <p class="sub">Back to square one.</p>
+    </div>
+  </div>
+
+  <footer>
+    You got the job at 1024 — but kept grinding and got greedy. Merge to the 2048 tile and it's a layoff. Life starts over.
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   THEMING TABLE — EDIT THE JOKES HERE.
+   Map tile value -> { emoji, text }. Logic never touches this.
+   ============================================================ */
+const LABELS = {
+  2:    { emoji: "👶", text: "baby" },
+  4:    { emoji: "🧒", text: "kid" },
+  8:    { emoji: "🎓", text: "grad" },
+  16:   { emoji: "",   text: "unemployed" },
+  32:   { emoji: "",   text: "still unemployed" },
+  64:   { emoji: "",   text: "moved back home" },
+  128:  { emoji: "",   text: "started a side project" },
+  256:  { emoji: "",   text: "my own startup" },
+  512:  { emoji: "🤑", text: "millionaire" },
+  1024: { emoji: "🎉", text: "FINALLY got a job" },   // WIN tile
+  2048: { emoji: "💀", text: "got laid off" }          // LAYOFF tile — final tile (see logic)
+};
+
+/* Per-value tile background colors (life-stage palette). */
+/* Each life stage gets its own clearly distinct hue, walking the color wheel. */
+const COLORS = {
+  2:    "#f48fb1", // baby       — pink
+  4:    "#ff8a65", // kid        — coral
+  8:    "#ffd54f", // grad       — amber
+  16:   "#aed581", // unemployed — light green
+  32:   "#4db6ac", // still...   — teal
+  64:   "#4fc3f7", // moved home — sky blue
+  128:  "#7986cb", // side proj  — indigo
+  256:  "#ba68c8", // my startup — purple
+  512:  "#ffb300", // millionaire— gold
+  1024: "#66bb6a", // got a job  — green (WIN)
+  2048: "#37474f"  // laid off   — dark slate (final)
+};
+/* Light/bright tiles get dark text so the label stays readable. */
+const TEXT_COLOR = {
+  8:    "#5a4a1e",
+  16:   "#3f5224",
+  512:  "#5a3d00"
+};
+
+/* Board accent palette shifts as your highest tile (life stage) climbs.
+   Picked by the highest tile value currently on the board. */
+const STAGES = [
+  { upTo: 8,        bg: "#faf8ef", board: "#bbada0", cell: "#cdc1b4" }, // childhood
+  { upTo: 64,       bg: "#eef3f8", board: "#8ca6bd", cell: "#bccddd" }, // unemployed blues
+  { upTo: 512,      bg: "#f4eefb", board: "#9d83bd", cell: "#c8b6e0" }, // side-project purple
+  { upTo: 1024,     bg: "#fff7e8", board: "#d2a857", cell: "#e8d4a4" }, // startup gold
+  { upTo: Infinity, bg: "#fffce8", board: "#e0c020", cell: "#efe18a" }  // millionaire shine
+];
+
+const WIN_VALUE = 1024;     // "FINALLY got a job"
+const LAYOFF_VALUE = 2048;  // "got laid off" — the final tile
+const SIZE = 4;
+
+/* ============================================================
+   GAME STATE
+   ============================================================ */
+let grid;          // 4x4 array of tile objects or null
+let score = 0;
+let best = parseInt(localStorage.getItem("life2048-best") || "0", 10);
+let tileId = 0;
+let hasWon = false;     // already showed win screen
+let busy = false;       // input lock during animations/events
+
+let combo = 0;          // consecutive fast-merge streak
+let lastMergeAt = 0;    // timestamp of the last merging move
+let comboHideTimer = null;
+
+const boardEl   = document.getElementById("board");
+const tileLayer = document.getElementById("tileLayer");
+const fxLayer   = document.getElementById("fxLayer");
+const scoreEl   = document.getElementById("score");
+const bestEl    = document.getElementById("best");
+const vignetteEl = document.getElementById("vignette");
+const comboBadge = document.getElementById("comboBadge");
+
+/* ============================================================
+   SETUP
+   ============================================================ */
+function buildGridBackground() {
+  const bg = document.getElementById("gridBg");
+  bg.innerHTML = "";
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    const c = document.createElement("div");
+    c.className = "grid-cell";
+    bg.appendChild(c);
+  }
+}
+
+function emptyGrid() {
+  return Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+}
+
+function init() {
+  buildGridBackground();
+  bestEl.textContent = best;
+  newGame();
+}
+
+function newGame() {
+  grid = emptyGrid();
+  score = 0;
+  hasWon = false;
+  busy = false;
+  combo = 0;
+  lastMergeAt = 0;
+  hideCombo();
+  updateScore();
+  hideAllOverlays();
+  tileLayer.innerHTML = "";
+  fxLayer.innerHTML = "";
+  spawnTile();
+  spawnTile();
+  render(true);
+  updateStageTheme();
+}
+
+/* ============================================================
+   TILE MODEL + RENDER
+   ============================================================ */
+function makeTile(value, r, c) {
+  return { id: ++tileId, value, r, c, el: null, spawn: true, merged: false };
+}
+
+function spawnTile(stepUp) {
+  const empties = [];
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (!grid[r][c]) empties.push([r, c]);
+  if (!empties.length) return null;
+  const [r, c] = empties[Math.floor(Math.random() * empties.length)];
+  // usually lowest tier (2), occasionally one step up (4)
+  const value = (Math.random() < 0.12) ? 4 : 2;
+  const t = makeTile(value, r, c);
+  grid[r][c] = t;
+  return t;
+}
+
+function styleTile(el, value) {
+  const label = LABELS[value] || { emoji: "", text: String(value) };
+  el.style.background = COLORS[value] || "#3c3a32";
+  el.style.color = TEXT_COLOR[value] || "#f9f6f2";
+
+  // font scales with board; longer text => slightly smaller base handled by .lbl
+  el.innerHTML =
+    (label.emoji ? `<span class="emoji">${label.emoji}</span>` : "") +
+    `<span class="lbl">${label.text}</span>`;
+}
+
+/* Translate a tile to grid cell (r,c) using a clean calc that accounts for gaps.
+   NOTE: a translate() percentage resolves against the element's OWN size, and
+   each tile is exactly one cell wide — so 100% here already equals one cell.
+   Position is therefore index * (cellSize + gap) = index * (100% + gap). */
+function cssMul(index) {
+  return `calc(${index} * (100% + var(--gap)))`;
+}
+
+function setTileSize(el) {
+  const size = `calc((100% - var(--gap) * ${SIZE - 1}) / ${SIZE})`;
+  el.style.width = size;
+  el.style.height = size;
+  // dynamic font size based on board pixel width
+  const px = boardEl.clientWidth;
+  el.style.fontSize = Math.max(11, px * 0.032) + "px";
+}
+
+function render(immediate) {
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const t = grid[r][c];
+      if (!t) continue;
+      if (!t.el) {
+        const el = document.createElement("div");
+        el.className = "tile";
+        styleTile(el, t.value);
+        setTileSize(el);
+        el.style.translate = `${cssMul(t.c)} ${cssMul(t.r)}`;
+        tileLayer.appendChild(el);
+        t.el = el;
+        if (t.spawn) {
+          el.classList.add("spawn");
+          el.addEventListener("animationend", () => el.classList.remove("spawn"), { once: true });
+          if (!immediate) { spawnPoof(t.r, t.c, t.value); playSpawn(); }
+        }
+        t.spawn = false;
+      } else {
+        // update position (slide)
+        el_move(t);
+      }
+    }
+  }
+}
+
+function el_move(t) {
+  t.el.style.translate = `${cssMul(t.c)} ${cssMul(t.r)}`;
+}
+
+/* ============================================================
+   MOVEMENT LOGIC (standard 2048)
+   Returns true if anything moved.
+   ============================================================ */
+function move(dir) {
+  if (busy) return;
+  // dir: 'left','right','up','down'
+  const vectors = {
+    left:  { dr: 0, dc: -1 },
+    right: { dr: 0, dc: 1 },
+    up:    { dr: -1, dc: 0 },
+    down:  { dr: 1, dc: 0 }
+  };
+  const v = vectors[dir];
+  const order = buildTraversal(dir);
+
+  let moved = false;
+  let createdLayoff = false;
+  const mergedTiles = []; // tiles that became merge results (to pop)
+  const toRemove = [];    // tiles absorbed by merge
+
+  // clear merged flags
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (grid[r][c]) grid[r][c].merged = false;
+
+  for (const r of order.rows) {
+    for (const c of order.cols) {
+      const tile = grid[r][c];
+      if (!tile) continue;
+      let nr = r, nc = c;
+      // find farthest position
+      while (true) {
+        const tr = nr + v.dr, tc = nc + v.dc;
+        if (tr < 0 || tr >= SIZE || tc < 0 || tc >= SIZE) break;
+        if (grid[tr][tc] === null) { nr = tr; nc = tc; continue; }
+        // occupied: check merge
+        const other = grid[tr][tc];
+        if (other.value === tile.value && !other.merged) {
+          // merge
+          const newValue = tile.value * 2;
+          grid[r][c] = null;
+          other.value = newValue;
+          other.merged = true;
+          // remove this tile's element after sliding onto other
+          tile.r = tr; tile.c = tc;
+          el_move(tile);
+          toRemove.push(tile);
+          styleTile(other.el, newValue);
+          mergedTiles.push(other);
+          score += newValue;
+          moved = true;
+          if (newValue === LAYOFF_VALUE) createdLayoff = true;
+          else if (newValue === WIN_VALUE && !hasWon) { /* win handled after */ }
+          nr = tr; nc = tc;
+        }
+        break;
+      }
+      if (grid[r][c] === tile && (nr !== r || nc !== c)) {
+        grid[r][c] = null;
+        grid[nr][nc] = tile;
+        tile.r = nr; tile.c = nc;
+        el_move(tile);
+        moved = true;
+      }
+    }
+  }
+
+  if (!moved) return;
+
+  busy = true;
+
+  // after slide animation, finalize
+  setTimeout(() => {
+    // remove absorbed tiles
+    for (const t of toRemove) { if (t.el) t.el.remove(); }
+    // pop merged
+    for (const t of mergedTiles) {
+      if (!t.el) continue;
+      t.el.classList.add("merged");
+      t.el.addEventListener("animationend", () => t.el.classList.remove("merged"), { once: true });
+    }
+
+    // merge feedback: floating "+N", combo streak, screen shake, sound
+    if (mergedTiles.length) {
+      let maxMerge = 0;
+      for (const t of mergedTiles) {
+        floatPopup("+" + t.value, t.r, t.c);
+        if (t.value > maxMerge) maxMerge = t.value;
+      }
+      bumpCombo();
+      playMerge(maxMerge);
+      screenShake(maxMerge);
+    } else {
+      resetCombo();
+    }
+
+    updateScore();
+
+    // LAYOFF event takes priority — dramatic reset
+    if (createdLayoff) {
+      triggerLayoff();
+      return;
+    }
+
+    // spawn new tile
+    spawnTile();
+    render(false);
+    updateStageTheme();
+
+    // WIN check
+    const reachedWin = anyTileEquals(WIN_VALUE);
+    if (reachedWin && !hasWon) {
+      hasWon = true;
+      busy = true;
+      showWin();
+      return;
+    }
+
+    busy = false;
+
+    // LOSE check
+    if (!movesAvailable()) {
+      showGameOver();
+    }
+  }, 130);
+}
+
+function buildTraversal(dir) {
+  let rows = [0, 1, 2, 3];
+  let cols = [0, 1, 2, 3];
+  if (dir === "right") cols = [3, 2, 1, 0];
+  if (dir === "down")  rows = [3, 2, 1, 0];
+  return { rows, cols };
+}
+
+function anyTileEquals(val) {
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (grid[r][c] && grid[r][c].value === val) return true;
+  return false;
+}
+
+function movesAvailable() {
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++) {
+      if (!grid[r][c]) return true;
+      const v = grid[r][c].value;
+      if (c < SIZE - 1 && grid[r][c + 1] && grid[r][c + 1].value === v) return true;
+      if (r < SIZE - 1 && grid[r + 1][c] && grid[r + 1][c].value === v) return true;
+    }
+  return false;
+}
+
+/* ============================================================
+   SCORE
+   ============================================================ */
+function updateScore() {
+  scoreEl.textContent = score;
+  if (score > best) {
+    best = score;
+    localStorage.setItem("life2048-best", String(best));
+    bestEl.textContent = best;
+  }
+}
+
+/* ============================================================
+   OVERLAYS / EVENTS
+   ============================================================ */
+function hideAllOverlays() {
+  document.getElementById("winOverlay").classList.remove("show");
+  document.getElementById("overOverlay").classList.remove("show");
+  document.getElementById("layoffOverlay").classList.remove("show");
+}
+
+function showWin() {
+  document.getElementById("winOverlay").classList.add("show");
+  launchConfetti();
+  playWin();
+}
+
+function showGameOver() {
+  document.getElementById("overOverlay").classList.add("show");
+}
+
+function triggerLayoff() {
+  // dramatic: shudder + red vignette, crumble every tile off the board one by
+  // one, THEN the dark message, a beat, and a full reset.
+  busy = true;
+  resetCombo();
+  playLayoff();
+  boardEl.classList.add("shudder");
+  vignetteEl.classList.add("show");
+
+  // collect tiles in reading order; stagger their fall
+  const tiles = [];
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (grid[r][c]) tiles.push(grid[r][c]);
+
+  tiles.forEach((t, i) => {
+    setTimeout(() => crumbleTile(t), 250 + i * 80);
+  });
+
+  const fallDone = 250 + tiles.length * 80 + 700;
+  const layoff = document.getElementById("layoffOverlay");
+
+  setTimeout(() => boardEl.classList.remove("shudder"), 850);
+  setTimeout(() => layoff.classList.add("show"), fallDone);
+
+  // pause for drama, then reset (best score preserved inside newGame)
+  setTimeout(() => {
+    layoff.classList.remove("show");
+    vignetteEl.classList.remove("show");
+    setTimeout(() => {
+      newGame(); // score resets to 0; best already persisted
+    }, 350);
+  }, fallDone + 1500);
+}
+
+/* Send a single tile tumbling off the bottom of the board. */
+function crumbleTile(t) {
+  if (!t.el) return;
+  const el = t.el;
+  el.classList.add("crumble");
+  el.style.transition = "translate 0.7s cubic-bezier(.5,0,.9,.4), rotate 0.7s, opacity 0.7s ease-in";
+  const rot = (Math.random() * 80 - 40).toFixed(1);
+  const drift = (Math.random() * 30 - 15).toFixed(0);
+  el.style.translate = `calc(${cssMul(t.c)} + ${drift}px) calc(${cssMul(t.r)} + 170%)`;
+  el.style.rotate = `${rot}deg`;
+  el.style.opacity = "0";
+}
+
+/* ============================================================
+   CONFETTI (pure CSS/JS, no libs)
+   ============================================================ */
+function launchConfetti() {
+  const box = document.getElementById("confetti");
+  box.innerHTML = "";
+  const colors = ["#edc22e", "#f67c5f", "#8f7a66", "#ffffff", "#f2b179", "#76c893"];
+  for (let i = 0; i < 80; i++) {
+    const bit = document.createElement("i");
+    bit.style.left = Math.random() * 100 + "%";
+    bit.style.background = colors[Math.floor(Math.random() * colors.length)];
+    bit.style.animationDuration = (1.2 + Math.random() * 1.8) + "s";
+    bit.style.animationDelay = (Math.random() * 0.6) + "s";
+    bit.style.transform = `translateY(0) rotate(${Math.random() * 360}deg)`;
+    box.appendChild(bit);
+  }
+  setTimeout(() => { box.innerHTML = ""; }, 3600);
+}
+
+/* ============================================================
+   FX — floating popups, spawn poofs, screen shake, combo streak
+   ============================================================ */
+function fxSizeCalc() {
+  return `calc((100% - var(--gap) * ${SIZE - 1}) / ${SIZE})`;
+}
+
+/* "+N" score popup centered on a tile cell. */
+function floatPopup(text, r, c) {
+  const wrap = document.createElement("div");
+  wrap.className = "fx-pos";
+  wrap.style.width = fxSizeCalc();
+  wrap.style.transform = `translate(${cssMul(c)}, ${cssMul(r)})`;
+  const inner = document.createElement("div");
+  inner.className = "popup";
+  inner.textContent = text;
+  wrap.appendChild(inner);
+  fxLayer.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 950);
+}
+
+/* Little puff when a new tile is delivered (stork-egg for babies). */
+function spawnPoof(r, c, value) {
+  const wrap = document.createElement("div");
+  wrap.className = "fx-pos";
+  wrap.style.width = fxSizeCalc();
+  wrap.style.transform = `translate(${cssMul(c)}, ${cssMul(r)})`;
+  const inner = document.createElement("div");
+  inner.className = "poof";
+  inner.textContent = value === 2 ? "🐣" : "✨";
+  wrap.appendChild(inner);
+  fxLayer.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 650);
+}
+
+/* Shake the board, amplitude scaled to the biggest merge in the move. */
+function screenShake(maxMergeValue) {
+  const tier = Math.max(1, Math.log2(maxMergeValue) - 1); // 4 -> 1, 2048 -> 10
+  const amp = Math.min(14, 2 + tier * 1.2);
+  boardEl.style.setProperty("--amp", amp.toFixed(1));
+  boardEl.classList.remove("shake");
+  void boardEl.offsetWidth;                 // reflow so the animation restarts
+  boardEl.classList.add("shake");
+  boardEl.addEventListener("animationend", () => boardEl.classList.remove("shake"), { once: true });
+}
+
+/* Combo streak: merge again within the window to build a multiplier. */
+function bumpCombo() {
+  const now = Date.now();
+  combo = (now - lastMergeAt < 2500) ? combo + 1 : 1;
+  lastMergeAt = now;
+  if (combo >= 2) showCombo(combo);
+}
+function resetCombo() {
+  combo = 0;
+  hideCombo();
+}
+function showCombo(n) {
+  comboBadge.textContent = "🔥 COMBO ×" + n;
+  comboBadge.classList.add("show");
+  if (comboHideTimer) clearTimeout(comboHideTimer);
+  comboHideTimer = setTimeout(hideCombo, 1400);
+}
+function hideCombo() {
+  comboBadge.classList.remove("show");
+}
+
+/* ============================================================
+   STAGE THEME — board palette shifts with your highest tile
+   ============================================================ */
+function highestValue() {
+  let m = 0;
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (grid[r][c] && grid[r][c].value > m) m = grid[r][c].value;
+  return m;
+}
+function updateStageTheme() {
+  const hi = highestValue();
+  const stage = STAGES.find(s => hi <= s.upTo) || STAGES[STAGES.length - 1];
+  const root = document.documentElement.style;
+  root.setProperty("--bg", stage.bg);
+  root.setProperty("--board-bg", stage.board);
+  root.setProperty("--cell-bg", stage.cell);
+}
+
+/* ============================================================
+   SOUND — pure Web Audio oscillator blips, no files
+   ============================================================ */
+let soundOn = localStorage.getItem("life2048-sound") !== "off";
+let audioCtx = null;
+
+function ensureAudio() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audioCtx = new AC();
+  }
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function blip(freq, dur, type, gainVal, delay) {
+  if (!soundOn) return;
+  ensureAudio();
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime + (delay || 0);
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type || "sine";
+  osc.frequency.setValueAtTime(freq, t0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gainVal || 0.12, t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+
+function playMerge(value) {
+  const tier = Math.max(1, Math.log2(value));
+  blip(140 + tier * 38, 0.12, "triangle", 0.12);
+}
+function playSpawn() { blip(680, 0.05, "sine", 0.05); }
+function playWin() {
+  [523, 659, 784, 1047].forEach((f, i) => blip(f, 0.22, "sine", 0.14, i * 0.12));
+}
+function playLayoff() {
+  [440, 330, 247, 165].forEach((f, i) => blip(f, 0.3, "sawtooth", 0.12, i * 0.16));
+}
+
+/* ============================================================
+   INPUT — keyboard + touch
+   ============================================================ */
+document.addEventListener("keydown", (e) => {
+  const map = {
+    ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
+    a: "left", d: "right", w: "up", s: "down"
+  };
+  const dir = map[e.key];
+  if (dir) { e.preventDefault(); move(dir); }
+});
+
+// touch swipe
+let touchStart = null;
+boardEl.addEventListener("touchstart", (e) => {
+  const t = e.changedTouches[0];
+  touchStart = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+
+boardEl.addEventListener("touchend", (e) => {
+  if (!touchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const absX = Math.abs(dx), absY = Math.abs(dy);
+  const THRESH = 24;
+  if (Math.max(absX, absY) < THRESH) { touchStart = null; return; }
+  if (absX > absY) move(dx > 0 ? "right" : "left");
+  else move(dy > 0 ? "down" : "up");
+  touchStart = null;
+}, { passive: true });
+
+/* Buttons */
+document.getElementById("restart").addEventListener("click", newGame);
+document.getElementById("tryAgain").addEventListener("click", newGame);
+document.getElementById("keepPlaying").addEventListener("click", () => {
+  document.getElementById("winOverlay").classList.remove("show");
+  busy = false;
+});
+
+/* Sound toggle */
+const soundBtn = document.getElementById("soundToggle");
+soundBtn.textContent = soundOn ? "🔊" : "🔇";
+soundBtn.addEventListener("click", () => {
+  soundOn = !soundOn;
+  localStorage.setItem("life2048-sound", soundOn ? "on" : "off");
+  soundBtn.textContent = soundOn ? "🔊" : "🔇";
+  if (soundOn) { ensureAudio(); playSpawn(); }
+});
+
+/* Re-fit tile sizes/fonts on resize */
+window.addEventListener("resize", () => {
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (grid[r][c] && grid[r][c].el) {
+        setTileSize(grid[r][c].el);
+        el_move(grid[r][c]);
+      }
+});
+
+/* GO */
+init();
+</script>
+</body>
+</html>
