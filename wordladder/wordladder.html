@@ -1149,11 +1149,7 @@ function saveShareImage(){
    EVENTS
    ============================================================ */
 el.submit.addEventListener('click', submitGuess);
-el.guess.addEventListener('keydown', e=>{
-  if (e.key==='Enter') submitGuess();
-  // Backspace on an empty input acts as "undo last word".
-  else if (e.key==='Backspace' && el.guess.value==='' && !el.undo.disabled){ e.preventDefault(); undoMove(); }
-});
+el.guess.addEventListener('keydown', e=>{ if (e.key==='Enter') submitGuess(); });
 el.hint.addEventListener('click', useHint);
 el.solve.addEventListener('click', showSolution);
 el.undo.addEventListener('click', undoMove);
