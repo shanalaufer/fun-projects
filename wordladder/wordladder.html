@@ -278,6 +278,37 @@ header.top{ display:flex; align-items:center; justify-content:space-between; gap
 .linkbtn:hover{ color:var(--ink-dim); text-decoration:underline; }
 .daily-badge{ font-size:.7rem; color:var(--accent); font-weight:700; }
 
+/* ---------- daily leaderboard ---------- */
+.lb-open{ white-space:nowrap; }
+.daily-lb{ border-top:1px solid var(--line); margin-top:4px; padding-top:14px; margin-bottom:6px; }
+.lb-name-row{ display:flex; gap:8px; }
+#lbName{
+  flex:1; min-width:0; background:var(--card); border:1.5px solid var(--line); border-radius:var(--r-sm);
+  color:var(--ink); font-size:1rem; font-weight:700; padding:11px 13px; outline:none; font-family:var(--font);
+}
+#lbName:focus{ border-color:var(--accent); box-shadow:0 0 0 4px rgba(124,131,255,.16); }
+#lbPost{ flex:0 0 auto; padding:0 16px; font-size:.9rem; }
+#lbPost:disabled{ opacity:.5; cursor:default; }
+.lb-note{ font-size:.74rem; color:var(--ink-faint); margin:7px 2px 4px; text-align:left; }
+.lb-status{ font-size:.84rem; color:var(--ink-dim); font-weight:600; margin:8px 0; min-height:18px; }
+.lb-list{ display:flex; flex-direction:column; gap:4px; max-height:34vh; overflow-y:auto; margin-top:4px; }
+.lb-row{
+  display:grid; grid-template-columns:34px 1fr auto auto; align-items:center; gap:10px;
+  background:#f3f5fc; border:1px solid var(--line); border-radius:10px; padding:9px 12px; text-align:left;
+}
+.lb-row .lb-rank{ font-weight:800; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+.lb-row .lb-who{ font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lb-row .lb-moves{ font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; }
+.lb-row .lb-time{ font-size:.82rem; color:var(--ink-dim); font-variant-numeric:tabular-nums; min-width:42px; text-align:right; }
+.lb-row.is-me{ background:linear-gradient(180deg,#eef0ff,#e7ecff); border-color:var(--accent); }
+.lb-row.is-me .lb-who{ color:var(--accent); }
+.lb-row.is-me .lb-who::after{ content:' (you)'; color:var(--ink-faint); font-weight:600; font-size:.78rem; }
+.lb-row.top1 .lb-rank::before{ content:'🥇'; }
+.lb-row.top2 .lb-rank::before{ content:'🥈'; }
+.lb-row.top3 .lb-rank::before{ content:'🥉'; }
+.lb-row.top1 .lb-rank, .lb-row.top2 .lb-rank, .lb-row.top3 .lb-rank{ font-size:0; }
+.lb-row.top1 .lb-rank::before, .lb-row.top2 .lb-rank::before, .lb-row.top3 .lb-rank::before{ font-size:1.1rem; }
+
 /* ---------- toast ---------- */
 .toast{ position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
   background:#f3f5fc; border:1px solid var(--line); color:var(--ink); padding:10px 16px; border-radius:30px;
@@ -328,6 +359,7 @@ header.top{ display:flex; align-items:center; justify-content:space-between; gap
       <button class="diff" data-diff="medium">Medium</button>
       <button class="diff" data-diff="hard">Hard</button>
     </div>
+    <button class="diff lb-open hidden" id="lbBtn">🏆 Leaderboard</button>
   </section>
 
   <section class="endpoints">
@@ -391,11 +423,38 @@ header.top{ display:flex; align-items:center; justify-content:space-between; gap
     </div>
     <div class="rating" id="rating"></div>
     <div class="win-undos" id="winUndos"></div>
+
+    <!-- DAILY leaderboard block (shown only after a Daily win) -->
+    <div class="daily-lb hidden" id="dailyLb">
+      <div class="lb-name-row">
+        <input id="lbName" maxlength="24" autocomplete="off" autocapitalize="off"
+               spellcheck="false" placeholder="Your name" />
+        <button class="btn go" id="lbPost">Post score</button>
+      </div>
+      <div class="lb-note">🌍 This name will appear on the <b>public</b> daily leaderboard.</div>
+      <div class="lb-status" id="lbStatus"></div>
+      <div class="lb-list" id="lbList"></div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn" id="shareBtn"><span class="ico">📤</span> Share</button>
       <button class="btn go" id="againBtn">New puzzle</button>
     </div>
     <button class="linkbtn" id="reviewBtn">Review ladder</button>
+  </div>
+</div>
+
+<!-- DAILY LEADERBOARD MODAL (viewable any time from Daily mode) -->
+<div class="overlay" id="lbOverlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div style="font-size:2.2rem;line-height:1">🏆</div>
+    <h2 style="margin:6px 0 2px">Daily Leaderboard</h2>
+    <div class="tagline" id="lbModalDate"></div>
+    <div class="lb-status" id="lbModalStatus"></div>
+    <div class="lb-list" id="lbModalList"></div>
+    <div class="modal-actions">
+      <button class="btn go" id="lbModalClose" style="flex:1">Close</button>
+    </div>
   </div>
 </div>
 
@@ -456,6 +515,10 @@ header.top{ display:flex; align-items:center; justify-content:space-between; gap
 </div>
 
 <div class="confetti" id="confetti" aria-hidden="true"></div>
+
+<!-- Supabase JS client (CDN, no build step). Only the Daily leaderboard uses it;
+     if it fails to load the game stays fully playable and the leaderboard degrades. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
 /* ============================================================
@@ -801,6 +864,58 @@ const ScoreStore = {
 };
 
 /* ============================================================
+   DAILY LEADERBOARD  (Supabase — modular, DAILY-only)
+   ------------------------------------------------------------
+   Self-contained module. Free Play never touches this; its bests
+   stay in ScoreStore (localStorage) above. All network calls are
+   guarded so the game is fully playable if Supabase is unreachable.
+   Table `scores`: puzzle_date(date), player_name(text), moves(int),
+   time_seconds(int), undos(int).
+   ============================================================ */
+const Supa = {
+  URL: 'https://dhvldznhxphshtktkowi.supabase.co',
+  KEY: 'sb_publishable_-QFswktCuj4Bje9KfRS-Fg_FoxaY9Cr',
+  TABLE: 'scores',
+  NAME_KEY: 'wordladder.playername',
+  _client: null,
+
+  available(){ return typeof window!=='undefined' && window.supabase && typeof window.supabase.createClient==='function'; },
+  client(){
+    if (!this.available()) return null;
+    if (!this._client) this._client = window.supabase.createClient(this.URL, this.KEY);
+    return this._client;
+  },
+
+  // Remembered display name (defaults to a non-identifying handle).
+  getName(){
+    let n=null; try{ n=localStorage.getItem(this.NAME_KEY); }catch(e){}
+    return n || ('Player' + Math.floor(1000 + Math.random()*9000));
+  },
+  setName(n){ try{ localStorage.setItem(this.NAME_KEY, n); }catch(e){} },
+
+  // Insert one score; returns the inserted row (incl. id). Throws on failure.
+  async submit(row){
+    const c = this.client(); if (!c) throw new Error('Supabase unavailable');
+    const { data, error } = await c.from(this.TABLE).insert(row).select().single();
+    if (error) throw error;
+    return data;
+  },
+  // All rows for a given UTC puzzle date. Throws on failure.
+  async fetchDaily(dateStr){
+    const c = this.client(); if (!c) throw new Error('Supabase unavailable');
+    const { data, error } = await c.from(this.TABLE)
+      .select('id,player_name,moves,time_seconds,undos').eq('puzzle_date', dateStr);
+    if (error) throw error;
+    return data || [];
+  },
+  // Rank: fewest moves, then fastest time, then fewest undos.
+  rank(rows){
+    return rows.slice().sort((a,b)=>
+      (a.moves-b.moves) || (a.time_seconds-b.time_seconds) || ((a.undos||0)-(b.undos||0)));
+  },
+};
+
+/* ============================================================
    PHASE 3 — GAMEPLAY UI / STATE
    ============================================================ */
 const $ = sel => document.querySelector(sel);
@@ -813,6 +928,7 @@ const el = {
   overlay:$('#overlay'), confetti:$('#confetti'),
   modeSeg:$('#modeSeg'), diffSel:$('#diffSel'),
   undo:$('#undoBtn'), undoCount:$('#undoCount'),
+  lbBtn:$('#lbBtn'),
 };
 
 let game = null;     // current puzzle + progress
@@ -835,12 +951,15 @@ function fmtTime(ms){
   const s = Math.floor(ms/1000);
   return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
 }
+// Daily puzzle is keyed by the UTC calendar date, so everyone worldwide gets the
+// SAME puzzle on the same day and shares one leaderboard.
 function todayKey(d){ d = d || new Date();
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0'); }
 function dailySeed(d){ d = d || new Date();
-  return d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate(); }
-function prettyDate(d){ d = d || new Date();
-  return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
+  return d.getUTCFullYear()*10000 + (d.getUTCMonth()+1)*100 + d.getUTCDate(); }
+function prettyDate(arg){   // accepts a Date or a 'YYYY-MM-DD' UTC string; formats in UTC
+  const d = (arg instanceof Date) ? arg : (arg ? new Date(arg+'T00:00:00Z') : new Date());
+  return d.toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'}); }
 
 function setMsg(text, kind='info'){ el.msg.className = 'msg ' + kind; el.msg.innerHTML = text; }
 
@@ -905,11 +1024,13 @@ async function renderBest(){
 
 // reflect mode + difficulty in the controls
 function renderControls(){
+  const isDaily = state.mode==='daily';
   el.modeSeg.querySelectorAll('.seg-btn').forEach(b=> b.classList.toggle('active', b.dataset.mode===state.mode));
   el.diffSel.querySelectorAll('.diff').forEach(b=> b.classList.toggle('active', b.dataset.diff===state.difficulty));
-  // Daily uses a fixed difficulty (same for everyone) -> disable the picker.
-  el.diffSel.classList.toggle('disabled', state.mode==='daily');
-  el.neww.classList.toggle('hidden', state.mode==='daily');   // Daily is a single fixed puzzle
+  // Daily is one fixed puzzle for everyone -> hide difficulty, show the leaderboard button.
+  el.diffSel.classList.toggle('hidden', isDaily);
+  el.lbBtn.classList.toggle('hidden', !isDaily);
+  el.neww.classList.toggle('hidden', isDaily);
 }
 
 // ---- new puzzle ----
@@ -940,7 +1061,7 @@ function newGame(){
     stopTimer();
     el.guess.disabled=true; el.submit.disabled=true; el.hint.disabled=true; el.solve.disabled=true;
     el.undo.disabled=true;
-    setMsg(`📅 You already solved today's Daily in <b>${done.steps}</b> moves (${fmtTime(done.timeMs)}). Come back tomorrow, or switch to <b>Free Play</b>.`, 'info');
+    setMsg(`📅 You already solved today's Daily in <b>${done.steps}</b> moves (${fmtTime(done.timeMs)}). Tap <b>🏆 Leaderboard</b> to see standings, or switch to <b>Free Play</b>.`, 'info');
   } else if (isDaily){
     setMsg(`📅 <b>Daily — ${prettyDate()}</b> · everyone gets this same puzzle. ${game.start.toUpperCase()} → ${game.end.toUpperCase()}`, 'info');
   } else {
@@ -1016,6 +1137,81 @@ function showSolution(){
   step();
 }
 
+/* ============================================================
+   DAILY LEADERBOARD — UI glue (all Supabase calls are guarded)
+   ============================================================ */
+function lbSecs(ms){ return Math.max(0, Math.round(ms/1000)); }
+function fmtSecs(s){ return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+function esc(s){ return String(s||'').replace(/[<>&]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+
+function lbRowHtml(rank, row, isMe){
+  const cls = 'lb-row' + (isMe?' is-me':'') + (rank<=3?(' top'+rank):'');
+  return `<div class="${cls}">`
+    + `<span class="lb-rank">${rank}</span>`
+    + `<span class="lb-who">${esc(row.player_name)||'Anonymous'}</span>`
+    + `<span class="lb-moves">${row.moves}<span style="font-weight:600;color:var(--ink-faint);font-size:.72rem"> mv</span></span>`
+    + `<span class="lb-time">${fmtSecs(row.time_seconds||0)}</span>`
+    + `</div>`;
+}
+// Identify the player's own row: by inserted id if known, else name+moves+time.
+function matchMe(row, hl){
+  if (!hl) return false;
+  if (hl.rowId) return row.id===hl.rowId;
+  return hl.name && row.player_name===hl.name && row.moves===hl.moves && (row.time_seconds||0)===(hl.time_seconds||0);
+}
+async function renderLbInto(listEl, statusEl, dateStr, hl){
+  statusEl.textContent='Loading leaderboard…'; listEl.innerHTML='';
+  if (!Supa.available()){ statusEl.textContent="Couldn't load the leaderboard — you appear to be offline."; return; }
+  try{
+    const rows = Supa.rank(await Supa.fetchDaily(dateStr));
+    if (!rows.length){ statusEl.textContent='No scores yet today — be the first! 🌱'; return; }
+    statusEl.textContent='';
+    listEl.innerHTML = rows.map((r,i)=> lbRowHtml(i+1, r, matchMe(r,hl))).join('');
+    const meEl=listEl.querySelector('.is-me'); if (meEl) meEl.scrollIntoView({block:'nearest'});
+  }catch(e){
+    statusEl.textContent="Couldn't load the leaderboard — check your connection and try again.";
+  }
+}
+
+// After a DAILY win: show the name prompt + standings; submit exactly once.
+let _lbPosting=false;
+function setupWinLeaderboard(r){
+  const block=$('#dailyLb'); block.classList.remove('hidden');
+  const nameInput=$('#lbName'), postBtn=$('#lbPost'), status=$('#lbStatus'), list=$('#lbList');
+  _lbPosting=false;
+  nameInput.value = Supa.getName(); nameInput.disabled=false;
+  postBtn.disabled=false; postBtn.textContent='Post score';
+  renderLbInto(list, status, r.dateKey, null);   // show current standings right away
+  postBtn.onclick = async ()=>{
+    if (_lbPosting) return;
+    const name=(nameInput.value.trim()||'Anonymous').slice(0,24);
+    Supa.setName(name);
+    if (!Supa.available()){ status.textContent="You're offline — can't post right now. Your local result still counts."; return; }
+    const row={ puzzle_date:r.dateKey, player_name:name, moves:r.steps, time_seconds:lbSecs(r.timeMs), undos:r.undos };
+    _lbPosting=true; postBtn.disabled=true; status.textContent='Posting…';
+    try{
+      const inserted=await Supa.submit(row);
+      nameInput.disabled=true; postBtn.textContent='Posted ✓';
+      const rec=ScoreStore.getDaily(r.dateKey)||{};
+      rec.posted=true; rec.name=name; rec.rowId=inserted&&inserted.id; rec.moves=r.steps; rec.time_seconds=row.time_seconds;
+      ScoreStore.setDaily(r.dateKey, rec);
+      await renderLbInto(list, status, r.dateKey, {rowId:rec.rowId, name, moves:r.steps, time_seconds:row.time_seconds});
+    }catch(e){
+      _lbPosting=false; postBtn.disabled=false; status.textContent="Couldn't post — please try again.";
+    }
+  };
+}
+
+// Open the standalone leaderboard modal (viewable any time from Daily mode).
+async function openDailyLeaderboard(){
+  const dateStr=todayKey();
+  $('#lbModalDate').textContent = 'Daily · ' + prettyDate(dateStr);
+  $('#lbOverlay').classList.add('show');
+  const rec=ScoreStore.getDaily(dateStr);
+  const hl = (rec && rec.posted) ? {rowId:rec.rowId, name:rec.name, moves:rec.moves, time_seconds:rec.time_seconds} : null;
+  await renderLbInto($('#lbModalList'), $('#lbModalStatus'), dateStr, hl);
+}
+
 // ---- win ----
 async function win(){
   game.won = true; stopTimer();
@@ -1035,7 +1231,7 @@ async function win(){
     beat = await ScoreStore.submitScore({steps, par:game.par, timeMs, mode:game.mode});
     if (game.mode==='daily' && game.dateKey){
       const prior = ScoreStore.getDaily(game.dateKey);
-      if (!prior || steps < prior.steps) ScoreStore.setDaily(game.dateKey, {steps, par:game.par, timeMs});
+      if (!prior) ScoreStore.setDaily(game.dateKey, {steps, par:game.par, timeMs, undos:game.undos});
     }
   }
   renderBest();
@@ -1059,6 +1255,10 @@ async function win(){
     : `Undos used: <b>${game.undos}</b> <span style="color:var(--ink-faint)">(doesn’t affect your score)</span>`;
   // In Daily, the "New puzzle" button jumps to Free Play (Daily is one fixed puzzle).
   $('#againBtn').textContent = game.mode==='daily' ? 'Free Play →' : 'New puzzle';
+
+  // Daily-only: name prompt + public leaderboard. Free Play never submits a score.
+  if (game.mode==='daily' && !game.solved){ setupWinLeaderboard(lastResult); }
+  else { $('#dailyLb').classList.add('hidden'); }
 
   setTimeout(()=>{ openOverlay(); if(overPar===0) burstConfetti(); }, 480);
 }
@@ -1085,7 +1285,7 @@ function shareSquares(r){
   return '🟩'.repeat(Math.min(r.steps, r.par)) + '🟨'.repeat(Math.max(0, r.steps - r.par));
 }
 function buildShareText(r){
-  const tag = r.mode==='daily' ? `Daily ${prettyDate(new Date(r.dateKey+'T00:00:00'))}` : 'Free Play';
+  const tag = r.mode==='daily' ? `Daily ${prettyDate(r.dateKey)}` : 'Free Play';
   const cmp = r.overPar===0 ? 'best possible 🏆' : `+${r.overPar} over best`;
   return [
     `🪜 Word Ladder — ${tag}`,
@@ -1105,7 +1305,7 @@ function drawShareCard(r){
   x.fillStyle='#aab3d4'; x.font='700 22px -apple-system,Segoe UI,Roboto,sans-serif';
   x.fillText('🪜  WORD LADDER', 34, 58);
   x.fillStyle='#6b76a3'; x.font='600 16px -apple-system,Segoe UI,Roboto,sans-serif';
-  const tag = r.mode==='daily' ? `Daily · ${prettyDate(new Date(r.dateKey+'T00:00:00'))}` : 'Free Play';
+  const tag = r.mode==='daily' ? `Daily · ${prettyDate(r.dateKey)}` : 'Free Play';
   x.fillText(tag.toUpperCase(), 36, 84);
   // start -> goal
   x.fillStyle='#eef2ff'; x.font='800 40px -apple-system,Segoe UI,Roboto,sans-serif';
@@ -1172,6 +1372,10 @@ $('#copyTextBtn').addEventListener('click', copyShareText);
 $('#saveImgBtn').addEventListener('click', saveShareImage);
 $('#shareCloseBtn').addEventListener('click', ()=>$('#shareOverlay').classList.remove('show'));
 
+// daily leaderboard: view any time from Daily mode
+el.lbBtn.addEventListener('click', openDailyLeaderboard);
+$('#lbModalClose').addEventListener('click', ()=>$('#lbOverlay').classList.remove('show'));
+
 // mode toggle
 el.modeSeg.addEventListener('click', e=>{
   const b=e.target.closest('.seg-btn'); if(!b) return;
@@ -1196,7 +1400,7 @@ function closeHowto(){
 $('#howBtn').addEventListener('click', ()=>$('#howOverlay').classList.add('show'));
 $('#howClose').addEventListener('click', closeHowto);
 
-[el.overlay, $('#howOverlay'), $('#shareOverlay')].forEach(o=>{
+[el.overlay, $('#howOverlay'), $('#shareOverlay'), $('#lbOverlay')].forEach(o=>{
   o.addEventListener('click', e=>{ if (e.target===o){ if(o.id==='howOverlay') closeHowto(); else o.classList.remove('show'); } });
 });
 
