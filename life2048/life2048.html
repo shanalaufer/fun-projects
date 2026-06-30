@@ -11,6 +11,7 @@
     --cell-bg: #cdc1b4;
     --text-dark: #776e65;
     --text-light: #f9f6f2;
+    --board-text: #f9f6f2; /* text on the board color (score boxes); set by theme */
     --gap: 12px;
   }
 
@@ -68,17 +69,19 @@
   }
   .score-box {
     background: var(--board-bg);
-    color: var(--text-light);
+    color: var(--board-text);
     border-radius: 6px;
     padding: 8px 14px;
     text-align: center;
     min-width: 72px;
+    transition: background 0.6s ease, color 0.6s ease;
   }
   .score-box .label {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #eee4da;
+    color: var(--board-text);
+    opacity: 0.82;
     font-weight: 700;
   }
   .score-box .value {
@@ -162,11 +165,18 @@
     line-height: 1;
   }
   .tile .lbl {
-    font-size: 0.62em;
-    line-height: 1.05;
-    margin-top: 3px;
-    word-break: break-word;
-    hyphens: auto;
+    font-size: 0.62em; /* default; overridden per-tile by word length in styleTile() */
+    margin-top: 2px;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .tile .word {        /* each word on its own line */
+    display: block;
+    line-height: 1.04;
+    overflow-wrap: break-word;
+    max-width: 100%;
   }
 
   /* spawn + merge animations */
@@ -345,6 +355,70 @@
   /* a tile falling off the board during the layoff crumble */
   .tile.crumble { z-index: 6; }
 
+  /* ---- Progressive life-ladder legend (unlocks as you play) ---- */
+  .legend-wrap { margin-top: 18px; }
+  .legend-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #9a8f82;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 9px;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .leg-arrow {
+    color: #b3a99c;
+    font-size: 12px;
+    font-weight: 800;
+    flex: 0 0 auto;
+  }
+  .leg-chip {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 50px;
+    max-width: 84px;
+    min-height: 42px;
+    padding: 5px 6px;
+    border-radius: 7px;
+    text-align: center;
+    line-height: 1.04;
+    color: #f9f6f2;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+  }
+  .leg-emoji { font-size: 15px; line-height: 1; }
+  .leg-lbl {
+    font-size: 9px;
+    font-weight: 800;
+    margin-top: 2px;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+  /* not-yet-reached stages: a compact greyed "?" placeholder (no spoiler) */
+  .leg-chip.locked {
+    min-width: 30px;
+    max-width: 30px;
+    background: #d8cfc4;
+    color: #a89f93;
+    box-shadow: none;
+    font-size: 16px;
+    font-weight: 800;
+  }
+  @media (max-width: 380px) {
+    .leg-chip { min-width: 44px; max-width: 76px; min-height: 38px; }
+    .leg-lbl { font-size: 8.5px; }
+    .leg-chip.locked { min-width: 26px; max-width: 26px; }
+  }
+
   footer {
     margin-top: 16px;
     font-size: 12px;
@@ -407,6 +481,11 @@
     </div>
   </div>
 
+  <div class="legend-wrap">
+    <div class="legend-title">Life progress — keep merging to unlock what's next</div>
+    <div class="legend" id="legend"></div>
+  </div>
+
   <footer>
     You got the job at 1024 — but kept grinding and got greedy. Merge to the 2048 tile and it's a layoff. Life starts over.
   </footer>
@@ -431,41 +510,44 @@ const LABELS = {
   2048: { emoji: "💀", text: "got laid off" }          // LAYOFF tile — final tile (see logic)
 };
 
-/* Per-value tile background colors (life-stage palette). */
-/* Each life stage gets its own clearly distinct hue, walking the color wheel. */
+/* Per-value tile background colors (life-stage palette).
+   Each tier has its OWN clearly distinct hue so adjacent stages never look
+   alike — we vary hue (not just brightness). The bottom legend reuses these. */
 const COLORS = {
-  2:    "#f48fb1", // baby       — pink
-  4:    "#ff8a65", // kid        — coral
-  8:    "#ffd54f", // grad       — amber
-  16:   "#aed581", // unemployed — light green
-  32:   "#4db6ac", // still...   — teal
-  64:   "#4fc3f7", // moved home — sky blue
-  128:  "#7986cb", // side proj  — indigo
-  256:  "#ba68c8", // my startup — purple
-  512:  "#ffb300", // millionaire— gold
-  1024: "#66bb6a", // got a job  — green (WIN)
-  2048: "#37474f"  // laid off   — dark slate (final)
+  2:    "#ff3d9a", // baby             — hot pink
+  4:    "#ff8a00", // kid              — bright orange
+  8:    "#ffe000", // grad             — bright yellow
+  16:   "#9ee800", // unemployed       — lime
+  32:   "#22d65e", // still unemployed — bright green
+  64:   "#00e0c6", // moved back home  — bright teal
+  128:  "#00b6ff", // side project     — bright cyan-blue
+  256:  "#2e7bff", // my own startup   — bright blue
+  512:  "#ffc400", // millionaire      — bright gold
+  1024: "#b23bff", // got a job        — bright purple (WIN)
+  2048: "#ff2d2d"  // laid off         — bright red (final)
 };
-/* Light/bright tiles get dark text so the label stays readable. */
+/* Lighter/bright tiles get dark text so the label stays readable;
+   the saturated deep tiles (pink, blue, purple, red) use the light text. */
 const TEXT_COLOR = {
-  8:    "#5a4a1e",
-  16:   "#3f5224",
-  512:  "#5a3d00"
+  4:    "#5a2e00", // orange
+  8:    "#4d3b00", // yellow
+  16:   "#2c3a00", // lime
+  32:   "#063b1c", // green
+  64:   "#013a33", // teal
+  128:  "#04344a", // cyan-blue
+  512:  "#4d3500"  // gold
 };
 
-/* Board accent palette shifts as your highest tile (life stage) climbs.
-   Picked by the highest tile value currently on the board. */
-const STAGES = [
-  { upTo: 8,        bg: "#faf8ef", board: "#bbada0", cell: "#cdc1b4" }, // childhood
-  { upTo: 64,       bg: "#eef3f8", board: "#8ca6bd", cell: "#bccddd" }, // unemployed blues
-  { upTo: 512,      bg: "#f4eefb", board: "#9d83bd", cell: "#c8b6e0" }, // side-project purple
-  { upTo: 1024,     bg: "#fff7e8", board: "#d2a857", cell: "#e8d4a4" }, // startup gold
-  { upTo: Infinity, bg: "#fffce8", board: "#e0c020", cell: "#efe18a" }  // millionaire shine
-];
+/* The board/background palette is DERIVED from the highest tile's color
+   (see updateStageTheme + hexToHsl), so the whole scene becomes a shade of
+   whatever life stage you've reached — not a separate hand-picked palette. */
 
 const WIN_VALUE = 1024;     // "FINALLY got a job"
 const LAYOFF_VALUE = 2048;  // "got laid off" — the final tile
 const SIZE = 4;
+
+/* Ordered life-stage values (2,4,8,…,2048) — drives the progress legend. */
+const STAGE_VALUES = Object.keys(LABELS).map(Number).sort((a, b) => a - b);
 
 /* ============================================================
    GAME STATE
@@ -476,6 +558,7 @@ let best = parseInt(localStorage.getItem("life2048-best") || "0", 10);
 let tileId = 0;
 let hasWon = false;     // already showed win screen
 let busy = false;       // input lock during animations/events
+let highestReached = 0; // highest tile value created THIS game (for the unlock legend)
 
 let combo = 0;          // consecutive fast-merge streak
 let lastMergeAt = 0;    // timestamp of the last merging move
@@ -488,6 +571,7 @@ const scoreEl   = document.getElementById("score");
 const bestEl    = document.getElementById("best");
 const vignetteEl = document.getElementById("vignette");
 const comboBadge = document.getElementById("comboBadge");
+const legendEl   = document.getElementById("legend");
 
 /* ============================================================
    SETUP
@@ -519,6 +603,7 @@ function newGame() {
   busy = false;
   combo = 0;
   lastMergeAt = 0;
+  highestReached = 0;   // reset unlock progress for the new game
   hideCombo();
   updateScore();
   hideAllOverlays();
@@ -528,6 +613,7 @@ function newGame() {
   spawnTile();
   render(true);
   updateStageTheme();
+  refreshProgress();
 }
 
 /* ============================================================
@@ -556,10 +642,31 @@ function styleTile(el, value) {
   el.style.background = COLORS[value] || "#3c3a32";
   el.style.color = TEXT_COLOR[value] || "#f9f6f2";
 
-  // font scales with board; longer text => slightly smaller base handled by .lbl
+  // Stack each word on its own line so the font can be BIGGER (no mid-line wrap).
+  const words = label.text.split(/\s+/);
+  const wordsHtml = words.map(w => `<span class="word">${w}</span>`).join("");
   el.innerHTML =
     (label.emoji ? `<span class="emoji">${label.emoji}</span>` : "") +
-    `<span class="lbl">${label.text}</span>`;
+    `<span class="lbl">${wordsHtml}</span>`;
+
+  // Size by the LONGEST word (so each line fits the width), then ease off a
+  // little when there are many stacked lines so it still fits the height.
+  const longest = Math.max.apply(null, words.map(w => w.length));
+  let lblEm;
+  if (longest <= 3)      lblEm = 1.30;
+  else if (longest <= 5) lblEm = 1.08;
+  else if (longest <= 7) lblEm = 0.90;
+  else if (longest <= 9) lblEm = 0.78;
+  else                   lblEm = 0.68; // unemployed(10), millionaire(11)
+  const totalLines = words.length + (label.emoji ? 1.4 : 0);
+  if (totalLines >= 4.2)      lblEm *= 0.80;
+  else if (totalLines >= 3.2) lblEm *= 0.90;
+  const emojiEm = words.length >= 4 ? 1.3 : words.length >= 3 ? 1.55 : 1.9;
+
+  const lblEl   = el.querySelector(".lbl");
+  const emojiEl = el.querySelector(".emoji");
+  if (lblEl)   lblEl.style.fontSize = lblEm + "em";
+  if (emojiEl) emojiEl.style.fontSize = emojiEm + "em";
 }
 
 /* Translate a tile to grid cell (r,c) using a clean calc that accounts for gaps.
@@ -576,7 +683,7 @@ function setTileSize(el) {
   el.style.height = size;
   // dynamic font size based on board pixel width
   const px = boardEl.clientWidth;
-  el.style.fontSize = Math.max(11, px * 0.032) + "px";
+  el.style.fontSize = Math.max(12, px * 0.038) + "px";
 }
 
 function render(immediate) {
@@ -718,6 +825,7 @@ function move(dir) {
     spawnTile();
     render(false);
     updateStageTheme();
+    refreshProgress();   // unlock any newly-reached stage in the legend
 
     // WIN check
     const reachedWin = anyTileEquals(WIN_VALUE);
@@ -927,13 +1035,116 @@ function highestValue() {
       if (grid[r][c] && grid[r][c].value > m) m = grid[r][c].value;
   return m;
 }
+/* Convert a #hex color to HSL (h:0-360, s/l:0-100). */
+function hexToHsl(hex) {
+  hex = hex.replace("#", "");
+  if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r)      h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else                h = (r - g) / d + 4;
+    h /= 6;
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+/* HSL -> relative luminance (for picking readable text on the board color). */
+function hslToRgb(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  if (s === 0) return [l * 255, l * 255, l * 255];
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [hue2rgb(p, q, h + 1 / 3) * 255, hue2rgb(p, q, h) * 255, hue2rgb(p, q, h - 1 / 3) * 255];
+}
+function relLuminance(h, s, l) {
+  const [r, g, b] = hslToRgb(h, s, l).map(v => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/* Derive the page / board-frame / empty-cell colors from the HIGHEST tile's
+   color, so the whole scene is a shade of the life stage you've reached.
+   The score boxes sit ON the board color, so their text auto-switches to dark
+   or light for contrast. (CSS transitions --bg/--board-bg, so it eases.) */
 function updateStageTheme() {
   const hi = highestValue();
-  const stage = STAGES.find(s => hi <= s.upTo) || STAGES[STAGES.length - 1];
+  const base = COLORS[hi] || COLORS[2];
+  const { h, s } = hexToHsl(base);
+  const sat = Math.min(s, 82);                 // keep warm hues reading as color, not brown
+  const boardL = 52;
   const root = document.documentElement.style;
-  root.setProperty("--bg", stage.bg);
-  root.setProperty("--board-bg", stage.board);
-  root.setProperty("--cell-bg", stage.cell);
+  root.setProperty("--bg",        `hsl(${h}, ${Math.min(sat, 55)}%, 96%)`); // near-white tint
+  root.setProperty("--cell-bg",   `hsl(${h}, ${Math.min(sat, 50)}%, 86%)`); // pale empty cells
+  root.setProperty("--board-bg",  `hsl(${h}, ${sat}%, ${boardL}%)`);        // mid frame (tiles pop)
+  // readable text for score boxes that sit on the board color
+  root.setProperty("--board-text", relLuminance(h, sat, boardL) > 0.42 ? "#2b2200" : "#f9f6f2");
+}
+
+/* ============================================================
+   PROGRESS LEGEND — unlocks each stage once reached this game
+   ============================================================ */
+/* Update the "highest reached" marker (monotonic within a game) and redraw. */
+function refreshProgress() {
+  const hi = highestValue();
+  if (hi > highestReached) highestReached = hi;
+  renderLegend();
+}
+
+/* Draw the ordered life-ladder. It grows one stage at a time: every stage
+   you've reached shows its label+emoji in the tile's own color, and exactly
+   ONE greyed "?" trails at the end as a teaser for the next stage — so the
+   chart fills in as you play and the next reveal stays a surprise. */
+function renderLegend() {
+  legendEl.innerHTML = "";
+
+  const addArrow = () => {
+    const a = document.createElement("span");
+    a.className = "leg-arrow";
+    a.textContent = "→";
+    legendEl.appendChild(a);
+  };
+
+  const unlocked = STAGE_VALUES.filter(v => v <= highestReached);
+  unlocked.forEach((v, idx) => {
+    if (idx > 0) addArrow();
+    const label = LABELS[v];
+    const chip = document.createElement("div");
+    chip.className = "leg-chip";
+    chip.style.background = COLORS[v] || "#3c3a32";
+    chip.style.color = TEXT_COLOR[v] || "#f9f6f2";
+    chip.innerHTML =
+      (label.emoji ? `<span class="leg-emoji">${label.emoji}</span>` : "") +
+      `<span class="leg-lbl">${label.text}</span>`;
+    chip.title = label.text;
+    legendEl.appendChild(chip);
+  });
+
+  // one trailing "?" teaser for the next stage, if any remain
+  const next = STAGE_VALUES.find(v => v > highestReached);
+  if (next !== undefined) {
+    if (unlocked.length > 0) addArrow();
+    const q = document.createElement("div");
+    q.className = "leg-chip locked";
+    q.textContent = "?";
+    q.title = "Keep merging to unlock";
+    legendEl.appendChild(q);
+  }
 }
 
 /* ============================================================
